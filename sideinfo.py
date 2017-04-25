@@ -296,7 +296,7 @@ def get_network(num_layers = 7, node_size = 10, dim = 1):
 
         def forward(self, x):
             x = self.layers(x)
-            x = 0.1 * x
+            x = 0.5 * x
             return x
 
    
@@ -338,6 +338,8 @@ def train_network(network, optimizer, x, p, num_it = 3000, alpha = 0.05):
     loss_hist = []
     soft_compare = nn.Sigmoid()
 
+    relu = nn.ReLU()
+    
     for iteration in range(num_it):
         if iteration % 100 == 0:
             print iteration
@@ -350,7 +352,7 @@ def train_network(network, optimizer, x, p, num_it = 3000, alpha = 0.05):
         s = torch.sum(soft_compare((output - p_input) * 1e3)) / batch_size #disco rate
         s2 = torch.sum(soft_compare((p_input - (1-output)) * 1e3)) / batch_size #false discoverate rate(over all samples)
 
-        gain = s  - 2 * soft_compare((s2 - s * alpha) * 5e4) 
+        gain = s  - 20 * relu((s2 - s * alpha)) 
 
         loss = -gain
         loss.backward()
