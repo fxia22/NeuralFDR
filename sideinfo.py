@@ -11,7 +11,7 @@ import torch.optim as optim
 
 from numpy import array
 from scipy.cluster.vq import kmeans2
-
+from sklearn.cluster import KMeans
 
 def generate_data_1D(job=0, n_samples=10000,data_vis=0, num_case=4):
     if job == 0: # discrete case
@@ -160,9 +160,79 @@ def generate_data_2D(job=0, n_samples=10000,data_vis=0):
             
         return p, h, X
     if job == 1: # Linear trend
-        pass
+        
+        x1 = np.random.uniform(-1,1,size = n_samples)
+        x2 = np.random.uniform(-1,1,size = n_samples)
+        pi1 = 0.1 * (x1 + 1) /2 +  0.3 *(1-x2) / 2
+        
+        p = np.zeros(n_samples)
+        h = np.zeros(n_samples)
+         
+        for i in range(n_samples):
+            rnd = np.random.uniform()
+            if rnd > pi1[i]:
+                p[i] = np.random.uniform()
+                h[i] = 0
+            else:
+                p[i] = np.random.beta(a = 0.3, b = 4)
+                h[i] = 1
+        X = np.concatenate([[x1],[x2]]).T
+        
+        if data_vis == 1:
+            fig = plt.figure()
+            ax1 = fig.add_subplot(121)
+            x_grid = np.arange(-1, 1, 1/100.0)
+            y_grid = np.arange(-1, 1, 1/100.0)
+            X_grid, Y_grid = np.meshgrid(x_grid, y_grid)
+            pi1_grid =  0.1 * (X_grid + 1) /2 +  0.3 *(1-Y_grid) / 2
+            
+            ax1.pcolor(X_grid, Y_grid, pi1_grid)
+            
+            ax2 = fig.add_subplot(122)
+            alt=ax2.scatter(x1[h==1][1:50], x2[h==1][1:50],color='r')
+            nul=ax2.scatter(x1[h==0][1:50], x2[h==0][1:50],color='b')
+            ax2.legend((alt,nul),('50 alternatives', '50 nulls'))
+            
+        return p, h, X
+        
+        
+        
     if job == 2: # Gaussian mixture + linear trend
-        pass
+        x1 = np.random.uniform(-1,1,size = n_samples)
+        x2 = np.random.uniform(-1,1,size = n_samples)
+        pi1 = ((mlab.bivariate_normal(x1, x2, 0.25, 0.25, -0.5, -0.2)+
+               mlab.bivariate_normal(x1, x2, 0.25, 0.25, 0.7, 0.5))/2).clip(max=1)        
+        pi1 = pi1 * 0.5 + 0.5*(0.5 * (x1 + 1) /2 +  0.3 *(1-x2) / 2)
+        
+        p = np.zeros(n_samples)
+        h = np.zeros(n_samples)
+               
+        for i in range(n_samples):
+            rnd = np.random.uniform()
+            if rnd > pi1[i]:
+                p[i] = np.random.uniform()
+                h[i] = 0
+            else:
+                p[i] = np.random.beta(a = 0.3, b = 4)
+                h[i] = 1
+        X = np.concatenate([[x1],[x2]]).T
+        
+        if data_vis == 1:
+            fig = plt.figure()
+            ax1 = fig.add_subplot(121)
+            x_grid = np.arange(-1, 1, 1/100.0)
+            y_grid = np.arange(-1, 1, 1/100.0)
+            X_grid, Y_grid = np.meshgrid(x_grid, y_grid)
+            pi1_grid = ((mlab.bivariate_normal(X_grid, Y_grid, 0.25, 0.25, -0.5, -0.2)+
+               mlab.bivariate_normal(X_grid, Y_grid, 0.25, 0.25, 0.7, 0.5))/2).clip(max=1)  * 0.5 + (0.5 * (0.5 * (X_grid + 1) /2 +  0.3 *(1-Y_grid) / 2))
+            ax1.pcolor(X_grid, Y_grid, pi1_grid)
+            
+            ax2 = fig.add_subplot(122)
+            alt=ax2.scatter(x1[h==1][1:50], x2[h==1][1:50],color='r')
+            nul=ax2.scatter(x1[h==0][1:50], x2[h==0][1:50],color='b')
+            ax2.legend((alt,nul),('50 alternatives', '50 nulls'))
+            
+        return p, h, X
     
 def BH(x, alpha = 0.05):
     x_s = sorted(x)
@@ -215,7 +285,7 @@ def Storey_BH(x, alpha = 0.05, lamb=0.4):
             ic = i
     return ic, x_s[ic], pi0_hat
 
-def Opt_t_cal_discrete(p, h, X, num_case=2,step_size=0.0001,ub=0.05,n_samples=10000,alpha=0.05):
+def Opt_t_cal_discrete(p, X, num_case=2,step_size=0.0001,ub=0.05,n_samples=10000,alpha=0.05):
     # Fit the beta mixture parameters
     fit_param=np.zeros([num_case, 3])
     for i in range(num_case):
@@ -306,7 +376,7 @@ def get_network(num_layers = 7, node_size = 10, dim = 1):
     return network
 
 
-def train_network_to_target_p(network, optimizer, x, target_p, num_it = 1000):
+def train_network_to_target_p(network, optimizer, x, target_p, num_it = 1000, dim = 1):
     target = Variable(torch.from_numpy(target_p.astype(np.float32)))
     l1loss = nn.L1Loss()
     batch_size = len(x)
@@ -318,7 +388,7 @@ def train_network_to_target_p(network, optimizer, x, target_p, num_it = 1000):
         if iteration % 100 == 0:
             print iteration
         choice = range(n_samples)
-        x_input = Variable(torch.from_numpy(x[choice].astype(np.float32).reshape(batch_size,1)))
+        x_input = Variable(torch.from_numpy(x[choice].astype(np.float32).reshape(batch_size,dim)))
 
         optimizer.zero_grad()
         output = network.forward(x_input) 
@@ -331,7 +401,7 @@ def train_network_to_target_p(network, optimizer, x, target_p, num_it = 1000):
     
     return loss_hist
 
-def train_network(network, optimizer, x, p, num_it = 3000, alpha = 0.05):
+def train_network(network, optimizer, x, p, num_it = 3000, alpha = 0.05, dim = 1):
     
     batch_size = len(x)
     n_samples = len(x)
@@ -344,7 +414,7 @@ def train_network(network, optimizer, x, p, num_it = 3000, alpha = 0.05):
         if iteration % 100 == 0:
             print iteration
         choice = range(n_samples)
-        x_input = Variable(torch.from_numpy(x[choice].astype(np.float32).reshape(batch_size,1)))
+        x_input = Variable(torch.from_numpy(x[choice].astype(np.float32).reshape(batch_size,dim)))
         p_input = Variable(torch.from_numpy(p[choice].astype(np.float32).reshape(batch_size,1)))
 
         optimizer.zero_grad()
@@ -361,3 +431,46 @@ def train_network(network, optimizer, x, p, num_it = 3000, alpha = 0.05):
         loss_hist.append(loss.data[0])
     
     return loss_hist, s, s2
+
+
+def opt_threshold(x, p, k, intensity = 1):
+    n_samples = x.shape[0]
+    
+    if len(x.shape) == 1:
+        x = np.expand_dims(x,1)
+    km = KMeans(n_clusters = k)
+    cluster = km.fit_predict(x)
+    opt = Opt_t_cal_discrete(p, cluster, num_case = k, step_size=0.00001)
+    #p_target = opt[cluster]
+    
+    x2 = x.repeat(k, axis = 1)
+    center = km.cluster_centers_.repeat(n_samples, axis = 1).T
+
+    e = np.exp (- (x2 - center) ** 2 / intensity)
+    s = np.expand_dims(np.sum(e, axis = 1),1)
+    prob = e/s
+    opt = Opt_t_cal_discrete(p, cluster, num_case = 10, step_size=0.00001)
+    p_target = prob.dot(opt)
+    
+    return p_target
+
+
+def opt_threshold_multi(x, p, k, intensity = 1):
+    n_samples = x.shape[0]
+
+    km = KMeans(n_clusters = k)
+    cluster = km.fit_predict(x)
+    opt = Opt_t_cal_discrete(p, cluster, num_case = k, step_size=0.00001)
+    center = np.expand_dims(km.cluster_centers_, axis = -1).repeat(n_samples, axis = -1).T
+    x2 = np.expand_dims(x, axis = -1).repeat(k, axis = -1)
+
+    dist = x2 - center
+    dist = np.sum((x2 - center) ** 2, axis = 1)
+
+
+    e = np.exp (- dist / intensity)
+    s = np.expand_dims(np.sum(e, axis = 1),1)
+    prob = e/s
+    p_target = prob.dot(opt)
+    
+    return p_target
