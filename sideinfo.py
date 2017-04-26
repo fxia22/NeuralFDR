@@ -344,7 +344,7 @@ def softmax_prob_cal(X,Centorid, intensity=1):
     return dist
 
 
-def get_network(num_layers = 7, node_size = 10, dim = 1):
+def get_network(num_layers = 7, node_size = 10, dim = 1, scale = 1):
     
     
     class Model(nn.Module):
@@ -366,7 +366,7 @@ def get_network(num_layers = 7, node_size = 10, dim = 1):
 
         def forward(self, x):
             x = self.layers(x)
-            x = 0.5 * x
+            x = 0.5 * scale * x 
             return x
 
    
@@ -401,7 +401,7 @@ def train_network_to_target_p(network, optimizer, x, target_p, num_it = 1000, di
     
     return loss_hist
 
-def train_network(network, optimizer, x, p, num_it = 3000, alpha = 0.05, dim = 1):
+def train_network(network, optimizer, x, p, num_it = 3000, alpha = 0.05, dim = 1, lambda_ = 20, lambda2_ = 1e3):
     
     batch_size = len(x)
     n_samples = len(x)
@@ -419,10 +419,10 @@ def train_network(network, optimizer, x, p, num_it = 3000, alpha = 0.05, dim = 1
 
         optimizer.zero_grad()
         output = network.forward(x_input) 
-        s = torch.sum(soft_compare((output - p_input) * 1e3)) / batch_size #disco rate
-        s2 = torch.sum(soft_compare((p_input - (1-output)) * 1e3)) / batch_size #false discoverate rate(over all samples)
+        s = torch.sum(soft_compare((output - p_input) * lambda2_)) / batch_size #disco rate
+        s2 = torch.sum(soft_compare((p_input - (1-output)) * lambda2_)) / batch_size #false discoverate rate(over all samples)
 
-        gain = s  - 20 * relu((s2 - s * alpha)) 
+        gain = s  - lambda_ * relu((s2 - s * alpha)) 
 
         loss = -gain
         loss.backward()
