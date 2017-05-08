@@ -346,7 +346,7 @@ def softmax_prob_cal(X,Centorid, intensity=1):
     return dist
 
 
-def get_network(num_layers = 7, node_size = 10, dim = 1, scale = 1):
+def get_network(num_layers = 10, node_size = 10, dim = 1, scale = 1, cuda = False):
     
     
     class Model(nn.Module):
@@ -375,7 +375,10 @@ def get_network(num_layers = 7, node_size = 10, dim = 1, scale = 1):
     
     
     network = Model(num_layers, node_size, dim)
-    return network
+    if cuda:
+        return network.cuda()
+    else:
+        return network
 
 
 def train_network_to_target_p(network, optimizer, x, target_p, num_it = 1000, dim = 1, cuda = False):
@@ -488,7 +491,7 @@ def opt_threshold_multi(x, p, k, intensity = 1):
 
 
 
-def train_network_val(network, optimizer, x, p, num_it = 3000, alpha = 0.05, dim = 1, lambda_ = 20, lambda2_ = 1e3, cuda = False):
+def train_network_val(network, optimizer, x, p, num_it = 3000, alpha = 0.05, dim = 1, lambda_ = 20, lambda2_ = 1e3, lambda3_ = 1e2, cuda = False):
     
     batch_size = len(x)
     n_samples = len(x)
@@ -522,7 +525,7 @@ def train_network_val(network, optimizer, x, p, num_it = 3000, alpha = 0.05, dim
         optimizer.zero_grad()
         output = network.forward(x_input_train) 
         s = torch.sum(soft_compare((output - p_input_train) * lambda2_)) / num_train #disco rate
-        s2 = torch.sum(soft_compare((p_input_train - (1-output)) * lambda2_)) / num_train #false discoverate rate(over all samples)
+        s2 = torch.sum(soft_compare((p_input_train - (1-output)) * lambda3_)) / num_train #false discoverate rate(over all samples)
 
         gain = s  - lambda_ * relu((s2 - s * alpha)) 
 
@@ -534,7 +537,7 @@ def train_network_val(network, optimizer, x, p, num_it = 3000, alpha = 0.05, dim
         
         output = network.forward(x_input_val) 
         s = torch.sum(soft_compare((output - p_input_val) * lambda2_)) / num_val #disco rate
-        s2 = torch.sum(soft_compare((p_input_val - (1-output)) * lambda2_)) / num_val #false discoverate rate(over all samples)
+        s2 = torch.sum(soft_compare((p_input_val - (1-output)) * lambda3_)) / num_val #false discoverate rate(over all samples)
 
         gain = s  - lambda_ * relu((s2 - s * alpha)) 
 
