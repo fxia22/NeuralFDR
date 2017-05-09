@@ -51,16 +51,16 @@ for i in range(3):
 
     n_samples = len(x[test_idx])
     x_input = Variable(torch.from_numpy(x[test_idx,:].astype(np.float32).reshape(n_samples ,dim))).cuda()
-    p_input = Variable(torch.from_numpy(p[test_idx,:].astype(np.float32).reshape(n_samples ,1))).cuda()
+    p_input = Variable(torch.from_numpy(p[test_idx].astype(np.float32).reshape(n_samples ,1))).cuda()
     output = network.forward(x_input) * scale
     pred = (p_input < output).cpu().data.numpy()
     pred = pred[:,0].astype(np.float32)
     preds.append(pred)
 
-    x2 = np.arange(0, 5, 0.01)
-    n_samples = len(x2)
-    x_input = Variable(torch.from_numpy(x2.astype(np.float32).reshape(n_samples ,1))).cuda()
-    outputs.append(network.forward(x_input) * scale)
+    #x2 = np.arange(0, 5, 0.01)
+    #n_samples = len(x2)
+    #x_input = Variable(torch.from_numpy(x2.astype(np.float32).reshape(n_samples ,1))).cuda()
+    #outputs.append(network.forward(x_input) * scale)
     gts.append(h[test_idx])
 
 
