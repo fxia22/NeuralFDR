@@ -3,13 +3,25 @@ import matplotlib.pyplot as plt
 import numpy as np
 import timeit
 import sys
+import argparse
+
+
 then = timeit.default_timer()
 
-fn = sys.argv[1]
-if len(sys.argv) > 2:
-    dim = int(sys.argv[2])
-else:
-    dim = 1
+parser = argparse.ArgumentParser()
+parser.add_argument('--data', type=str, default = '',  help='data path')
+parser.add_argument('--dim', type=int, default = 1,  help='dimension of data')
+parser.add_argument('--out', type=str, default = 'test',  help='output_directory')
+parser.add_argument('--prefix', type=str, default = 'http://localhost:8888/files',  help='url prefix')
+
+
+
+opt = parser.parse_args()
+print (opt)
+
+fn = opt.data
+dim = opt.dim
+
 
 
 data = np.loadtxt(open(fn, "rb"), delimiter=",", skiprows=1)
@@ -107,7 +119,6 @@ for i in range(3):
     gts.append(h[test_idx])
 
 
-    
 preds = np.concatenate(preds)
 gts = np.concatenate(gts)
 
@@ -123,6 +134,6 @@ info['BH result'] = BH(p)
 info['Storey BH result'] = Storey_BH(p)
 info['elapsed time'] = timeit.default_timer() - then
 
-url = generate_report(x = x, p = p, h = h, out_dir = 'test', url_prefix = 'http://deep.fxia.me:8893/files', info = info, loss1 = loss_hists1, loss2 = loss_hists2, scales = scales, efdr = efdr, x_prob = x_prob.cpu().data.numpy(), outputs = [item.cpu().data.numpy() for item in outputs], grids = grids)
+url = generate_report(x = x, p = p, h = h, out_dir = opt.out, url_prefix = opt.prefix, info = info, loss1 = loss_hists1, loss2 = loss_hists2, scales = scales, efdr = efdr, x_prob = x_prob.cpu().data.numpy(), outputs = [item.cpu().data.numpy() for item in outputs], grids = grids)
 
 print(url)
