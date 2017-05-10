@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg') 
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import mlab
@@ -590,4 +592,122 @@ def get_scale(network, x, p, dim = 1, cuda = False, lambda_ = 20, lambda2_ = 1e3
 
     print current, (s2/s).cpu().data[0]
         
-    return current
+    return current, (s2/s).cpu().data[0]
+
+import os
+import markdown2
+def generate_report(x = None, p = None, h = None, out_dir = '', url_prefix = '', info = {}, loss1 = None, loss2 = None, efdr = None, scales = None, x_prob = None, outputs = None, grids = None):
+    out_filename =  os.path.join(out_dir, 'report.html')
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    
+    if grids:
+        X_grid, Y_grid = grids
+    
+    f = open(out_filename, 'w')
+    s = ''
+    s += '# Report\n'
+    
+    s += '## Basic information\n'
+    for k in sorted(info.keys()):
+        v = info[k]
+        s += (str(k) + ':' + str(v) + '\n\n')
+    
+    dim = 1
+    if not x is None and not p is None :
+        n_samples = len(x)
+        s += '## Data description\n'
+        s += '- number of samples: {}\n'.format((n_samples))
+        s += '- dimension of data: {}\n'.format((x.shape[1]))
+        
+        dim = x.shape[1]
+        
+        plt.figure()
+        plt.scatter(x[:,0],p, 1, alpha = 0.3)
+        plt.xlabel('x')
+        plt.ylabel('p-value')
+        plt.savefig(out_dir + '/data.png')
+
+        s +=  '\n'
+        s += '![]({})\n'.format('data.png')
+        
+        if not h is None:
+            if not np.isnan(h[0]):
+                plt.figure()
+                plt.scatter(x[h==0,0], p[h==0], 1, alpha = 0.3, label = 'Null')
+                plt.scatter(x[h==1,0], p[h==1], 1, alpha = 0.3, label = 'Alternative')
+                plt.legend()
+                plt.xlabel('x')
+                plt.ylabel('p-value')
+                plt.savefig(out_dir + '/data_gt.png')
+        
+                s +=  '\n'
+                s += '![]({})\n'.format('data_gt.png')
+    
+    if not p is None:
+        plt.figure()
+        plt.hist(p, 50)
+        plt.xlabel('pvalues')
+        plt.savefig(out_dir + '/p_hist.png')
+        s +=  '\n'
+        s += '![]({})\n'.format('p_hist.png')
+    
+    if not loss1 is None and not loss2 is None:
+        s += '## Loss history\n'
+        plt.figure()
+        for i in range(3):
+            plt.plot(np.log(loss1[i]), label = 'Loss history {}'.format(i))
+        plt.legend()
+        plt.savefig(out_dir + '/loss1.png')
+        s +=  '\n'
+        s += '![]({})\n'.format('loss1.png')
+        
+        plt.figure()
+        for i in range(3):
+            plt.plot(loss2[i], label = 'Loss history {}'.format(i))
+        plt.legend()
+        plt.savefig(out_dir + '/loss2.png')
+        s +=  '\n'
+        s += '![]({})\n'.format('loss2.png')
+    
+    
+    if not scales is None and not efdr is None:
+        s += '## Scaling factors and expected FDR during training\n\n'
+        
+        s += str(efdr) + '\n\n'
+        
+        s += str(scales) + '\n\n'
+    
+    
+    if not len(outputs) == 0:
+        s += '## Threshold \n\n'
+        if dim == 1:
+            plt.figure()
+            for i in range(3):
+                plt.plot(x_prob, outputs[i], label = 'threshold {}'.format(i))
+            
+            plt.xlabel('x')
+            plt.ylabel('t')
+            plt.legend()
+            plt.savefig(out_dir + '/threshold.png')
+
+            
+            s += '![]({})\n'.format('threshold.png')
+        elif dim == 2:
+            for i in range(3):
+                plt.figure()
+                z = outputs[i].reshape(X_grid.shape)
+                plt.pcolor(X_grid, Y_grid, z)
+                plt.colorbar()
+                plt.savefig(out_dir + '/threshold_{}.png'.format(i))
+                s += '![]({})\n\n'.format('threshold_{}.png'.format(i))
+            
+     
+    html = markdown2.markdown(s)
+    
+    f.write(html)
+    f.close()
+    url = url_prefix + '/' + out_dir + '/report.html'
+    return url
+
+
