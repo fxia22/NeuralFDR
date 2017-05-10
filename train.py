@@ -56,8 +56,8 @@ print(x_prob.size())
 if x_prob:
     x_prob = x_prob.cuda()
 
-network = get_network(cuda = True, dim = dim)
-optimizer = optim.Adagrad(network.parameters(), lr = 0.01)
+#network = get_network(cuda = True, dim = dim)
+#optimizer = optim.Adagrad(network.parameters(), lr = 0.01)
 
 
 indices = np.random.permutation(x.shape[0])
@@ -78,32 +78,54 @@ loss_hists2 = []
 efdr = np.zeros((3,3))
 scales = np.zeros(3)
 
+ninit = 5
+
 for i in range(3):
-    network = get_network(num_layers = 10, cuda = True, dim = dim)
-    optimizer = optim.Adagrad(network.parameters(), lr = 0.01)
-    train_idx = train[i]
-    val_idx = val[i]
-    test_idx = test[i]
+    networks = []
+    scores = []
+    loss_hist1_array = []
+    loss_hist2_array = []
+    for j in range(ninit):
+        network = get_network(num_layers = 10, cuda = True, dim = dim)
+        optimizer = optim.Adagrad(network.parameters(), lr = 0.01)
+        train_idx = train[i]
+        val_idx = val[i]
+        test_idx = test[i]
 
-    #network init
-    if dim == 1:
-        p_target = opt_threshold(x[train_idx], p[train_idx], 10)
-    else:
-        p_target = opt_threshold_multi(x[train_idx,:], p[train_idx], 10)
-    #plt.figure()
-    #plt.scatter(x, p_target)
-    loss_hist = train_network_to_target_p(network, optimizer, x[train_idx,:], p_target, num_it = 6000, cuda= True, dim = dim)
-    loss_hist2, s, s2 = train_network(network, optimizer, x[train_idx,:], p[train_idx], num_it = 9000, cuda = True, dim = dim)
-
+        #network init
+        if dim == 1:
+            p_target = opt_threshold(x[train_idx], p[train_idx], 10)
+        else:
+            p_target = opt_threshold_multi(x[train_idx,:], p[train_idx], 10)
+        #plt.figure()
+        #plt.scatter(x, p_target)
+        loss_hist = train_network_to_target_p(network, optimizer, x[train_idx,:], p_target, num_it = 6000, cuda= True, dim = dim)
+        loss_hist2, s, s2 = train_network(network, optimizer, x[train_idx,:], p[train_idx], num_it = 9000, cuda = True, dim = dim)
+        
+        loss_hist_np = np.array(loss_hist2)
+        score = np.mean(loss_hist_np[-100:])
+        print(j,score)
+        networks.append(network)
+        scores.append(score)
+        loss_hist1_array.append(loss_hist)
+        loss_hist2_array.append(loss_hist2)
+        
+    idx = np.argmin(np.array(scores))
+    print idx
+    
+    loss_hist = loss_hist1_array[idx]
+    loss_hist2 = loss_hist2_array[idx]
+    network = networks[idx]
+     
     loss_hists1.append(loss_hist)
     loss_hists2.append(loss_hist2)
     
-    efdr[i,0] = (s2/s).cpu().data[0]
-    scale, efdr_ = get_scale(network, x[val_idx,:], p[val_idx], cuda = True, lambda2_ = 5e3, fit = True, dim = dim)
-    efdr[i,1] = efdr_
-    _, efdr_ = get_scale(network, x[test_idx,:], p[test_idx], cuda = True, lambda2_ = 5e3, scale = scale, dim = dim)
-    efdr[i,2] = efdr_
+    scale, efdr[i,1] = get_scale(network, x[val_idx,:], p[val_idx], cuda = True, lambda2_ = 5e3, fit = True, dim = dim)
+    _, efdr[i,2] = get_scale(network, x[test_idx,:], p[test_idx], cuda = True, lambda2_ = 5e3, scale = scale, dim = dim)
+    _, efdr[i,0] = get_scale(network, x[train_idx,:], p[train_idx], cuda = True, lambda2_ = 5e3, scale = scale, dim = dim)
+    
     scales[i] = scale
+    
     
     n_samples = len(x[test_idx])
     x_input = Variable(torch.from_numpy(x[test_idx,:].astype(np.float32).reshape(n_samples ,dim))).cuda()
