@@ -79,7 +79,9 @@ efdr = np.zeros((3,3))
 scales = np.zeros(3)
 
 ninit = 5
-
+if dim == 1:
+    x = x.reshape((x.shape[0], 1))
+    
 for i in range(3):
     networks = []
     scores = []
@@ -93,14 +95,16 @@ for i in range(3):
         test_idx = test[i]
 
         #network init
-        if dim == 1:
-            p_target = opt_threshold(x[train_idx], p[train_idx], 10)
-        else:
+        try:
             p_target = opt_threshold_multi(x[train_idx,:], p[train_idx], 10)
+        except:
+            p_target = np.ones(x[train_idx,:].shape[0]) * Storey_BH(p[train_idx])[1]
+
+
         #plt.figure()
         #plt.scatter(x, p_target)
-        loss_hist = train_network_to_target_p(network, optimizer, x[train_idx,:], p_target, num_it = 6000, cuda= True, dim = dim)
-        loss_hist2, s, s2 = train_network(network, optimizer, x[train_idx,:], p[train_idx], num_it = 9000, cuda = True, dim = dim)
+        loss_hist = train_network_to_target_p(network, optimizer, x[train_idx,:], p_target, num_it = 1000, cuda= True, dim = dim)
+        loss_hist2, s, s2 = train_network(network, optimizer, x[train_idx,:], p[train_idx], num_it = 1000, cuda = True, dim = dim)
         
         loss_hist_np = np.array(loss_hist2)
         score = np.mean(loss_hist_np[-100:])
