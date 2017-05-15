@@ -11,8 +11,11 @@ then = timeit.default_timer()
 parser = argparse.ArgumentParser()
 parser.add_argument('--data', type=str, default = '',  help='data path')
 parser.add_argument('--dim', type=int, default = 1,  help='dimension of data')
+parser.add_argument('--init', type=int, default = 5,  help='number of inits')
 parser.add_argument('--out', type=str, default = 'test',  help='output_directory')
 parser.add_argument('--prefix', type=str, default = 'http://localhost:8888/files',  help='url prefix')
+parser.add_argument('--alpha', type=float, default = 0.05,  help='url prefix')
+
 
 
 
@@ -39,7 +42,7 @@ if dim == 1:
     x_prob = np.arange(min_x, max_x, (max_x - min_x)/1000.0)
     x_prob = x_prob.reshape((len(x_prob), 1))
     x_prob = Variable(torch.from_numpy(x_prob.astype(np.float32)))
-    
+
 elif dim == 2:
     max_x0 = np.max(x[:,0])
     min_x0 = np.min(x[:,0])
@@ -47,13 +50,14 @@ elif dim == 2:
     min_x1 = np.min(x[:,1])
     x_prob0 = np.arange(min_x0, max_x0, (max_x0 - min_x0)/100.0)
     x_prob1 = np.arange(min_x1, max_x1, (max_x1 - min_x1)/100.0)
-    X_grid, Y_grid = np.meshgrid(x_prob0, x_prob1) 
+    X_grid, Y_grid = np.meshgrid(x_prob0, x_prob1)
     x_prob = Variable(torch.from_numpy(
     np.concatenate([[X_grid.flatten()], [Y_grid.flatten()]]).T.astype(np.float32)))
     grids = (X_grid, Y_grid)
-    
-print(x_prob.size())
+
+
 if x_prob:
+    print(x_prob.size())
     x_prob = x_prob.cuda()
 
 #network = get_network(cuda = True, dim = dim)
@@ -78,10 +82,10 @@ loss_hists2 = []
 efdr = np.zeros((3,3))
 scales = np.zeros(3)
 
-ninit = 5
+ninit = opt.init
 if dim == 1:
     x = x.reshape((x.shape[0], 1))
-    
+
 for i in range(3):
     networks = []
     scores = []
@@ -96,16 +100,16 @@ for i in range(3):
 
         #network init
         try:
-            p_target = opt_threshold_multi(x[train_idx,:], p[train_idx], 10)
+            p_target = opt_threshold_multi(x[train_idx,:], p[train_idx], 10, alpha = opt.alpha)
         except:
-            p_target = np.ones(x[train_idx,:].shape[0]) * Storey_BH(p[train_idx])[1]
+            p_target = np.ones(x[train_idx,:].shape[0]) * Storey_BH(p[train_idx], alpha = opt.alpha)[1]
 
 
         #plt.figure()
         #plt.scatter(x, p_target)
-        loss_hist = train_network_to_target_p(network, optimizer, x[train_idx,:], p_target, num_it = 6000, cuda= True, dim = dim)
-        loss_hist2, s, s2 = train_network(network, optimizer, x[train_idx,:], p[train_idx], num_it = 9000, cuda = True, dim = dim)
-        
+        loss_hist = train_network_to_target_p(network, optimizer, x[train_idx,:], p_target, num_it = 1000, cuda= True, dim = dim)
+        loss_hist2, s, s2 = train_network(network, optimizer, x[train_idx,:], p[train_idx], num_it = 1000, cuda = True, dim = dim, alpha = opt.alpha)
+
         loss_hist_np = np.array(loss_hist2)
         score = np.mean(loss_hist_np[-100:])
         print(j,score)
@@ -113,24 +117,24 @@ for i in range(3):
         scores.append(score)
         loss_hist1_array.append(loss_hist)
         loss_hist2_array.append(loss_hist2)
-        
+
     idx = np.argmin(np.array(scores))
     print idx
-    
+
     loss_hist = loss_hist1_array[idx]
     loss_hist2 = loss_hist2_array[idx]
     network = networks[idx]
-     
+
     loss_hists1.append(loss_hist)
     loss_hists2.append(loss_hist2)
-    
-    scale, efdr[i,1] = get_scale(network, x[val_idx,:], p[val_idx], cuda = True, lambda2_ = 5e3, fit = True, dim = dim)
-    _, efdr[i,2] = get_scale(network, x[test_idx,:], p[test_idx], cuda = True, lambda2_ = 5e3, scale = scale, dim = dim)
-    _, efdr[i,0] = get_scale(network, x[train_idx,:], p[train_idx], cuda = True, lambda2_ = 5e3, scale = scale, dim = dim)
-    
+
+    scale, efdr[i,1] = get_scale(network, x[val_idx,:], p[val_idx], cuda = True, lambda2_ = 5e3, fit = True, dim = dim, alpha = opt.alpha)
+    _, efdr[i,2] = get_scale(network, x[test_idx,:], p[test_idx], cuda = True, lambda2_ = 5e3, scale = scale, dim = dim, alpha = opt.alpha)
+    _, efdr[i,0] = get_scale(network, x[train_idx,:], p[train_idx], cuda = True, lambda2_ = 5e3, scale = scale, dim = dim, alpha = opt.alpha)
+
     scales[i] = scale
-    
-    
+
+
     n_samples = len(x[test_idx])
     x_input = Variable(torch.from_numpy(x[test_idx,:].astype(np.float32).reshape(n_samples ,dim))).cuda()
     p_input = Variable(torch.from_numpy(p[test_idx].astype(np.float32).reshape(n_samples ,1))).cuda()
@@ -141,7 +145,7 @@ for i in range(3):
 
     if not x_prob is None:
         outputs.append(network.forward(x_prob) * scale)
-    
+
     gts.append(h[test_idx])
 
 
@@ -156,10 +160,16 @@ print 1 - sum(preds * gts)/sum(preds)
 info['number of ground truth discoveries'] = sum(gts)
 info['number of discoveries'] = sum(preds)
 info['actual FDR'] = 1 - sum(preds * gts)/sum(preds)
-info['BH result'] = BH(p)
-info['Storey BH result'] = Storey_BH(p)
+info['BH result'] = BH(p, alpha = opt.alpha)
+info['Storey BH result'] = Storey_BH(p, alpha = opt.alpha)
 info['elapsed time'] = timeit.default_timer() - then
+if x_prob:
+    x_prob_data = x_prob.cpu().data.numpy()
+    output_data =  [item.cpu().data.numpy() for item in outputs]
+else:
+    x_prob_data = None
+    output_data = []
 
-url = generate_report(x = x, p = p, h = h, out_dir = opt.out, url_prefix = opt.prefix, info = info, loss1 = loss_hists1, loss2 = loss_hists2, scales = scales, efdr = efdr, x_prob = x_prob.cpu().data.numpy(), outputs = [item.cpu().data.numpy() for item in outputs], grids = grids)
+url = generate_report(x = x, p = p, h = h, out_dir = opt.out, url_prefix = opt.prefix, info = info, loss1 = loss_hists1, loss2 = loss_hists2, scales = scales, efdr = efdr, x_prob = x_prob_data, outputs = output_data, grids = grids)
 
 print(url)
