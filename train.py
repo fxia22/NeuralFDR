@@ -14,7 +14,9 @@ parser.add_argument('--dim', type=int, default = 1,  help='dimension of data')
 parser.add_argument('--init', type=int, default = 5,  help='number of inits')
 parser.add_argument('--out', type=str, default = 'test',  help='output_directory')
 parser.add_argument('--prefix', type=str, default = 'http://localhost:8888/files',  help='url prefix')
-parser.add_argument('--alpha', type=float, default = 0.05,  help='url prefix')
+parser.add_argument('--alpha', type=float, default = 0.05,  help='fdr')
+parser.add_argument('--fdr_scale', type=float, default = 1,  help='fd scale')
+
 
 
 
@@ -83,6 +85,12 @@ efdr = np.zeros((3,3))
 scales = np.zeros(3)
 
 ninit = opt.init
+
+bhp = BH(p, alpha = opt.alpha)[1]
+lambda_param = 4/bhp
+
+print('lambda ', lambda_param)
+
 if dim == 1:
     x = x.reshape((x.shape[0], 1))
 
@@ -107,8 +115,8 @@ for i in range(3):
 
         #plt.figure()
         #plt.scatter(x, p_target)
-        loss_hist = train_network_to_target_p(network, optimizer, x[train_idx,:], p_target, num_it = 1000, cuda= True, dim = dim)
-        loss_hist2, s, s2 = train_network(network, optimizer, x[train_idx,:], p[train_idx], num_it = 1000, cuda = True, dim = dim, alpha = opt.alpha)
+        loss_hist = train_network_to_target_p(network, optimizer, x[train_idx,:], p_target, num_it = 3000, cuda= True, dim = dim)
+        loss_hist2, s, s2 = train_network(network, optimizer, x[train_idx,:], p[train_idx], num_it = 6000, cuda = True, dim = dim, alpha = opt.alpha, lambda2_ = lambda_param, fdr_scale = opt.fdr_scale)
 
         loss_hist_np = np.array(loss_hist2)
         score = np.mean(loss_hist_np[-100:])
@@ -128,12 +136,11 @@ for i in range(3):
     loss_hists1.append(loss_hist)
     loss_hists2.append(loss_hist2)
 
-    scale, efdr[i,1] = get_scale(network, x[val_idx,:], p[val_idx], cuda = True, lambda2_ = 5e3, fit = True, dim = dim, alpha = opt.alpha)
-    _, efdr[i,2] = get_scale(network, x[test_idx,:], p[test_idx], cuda = True, lambda2_ = 5e3, scale = scale, dim = dim, alpha = opt.alpha)
-    _, efdr[i,0] = get_scale(network, x[train_idx,:], p[train_idx], cuda = True, lambda2_ = 5e3, scale = scale, dim = dim, alpha = opt.alpha)
+    scale, efdr[i,1] = get_scale(network, x[val_idx,:], p[val_idx], cuda = True, lambda2_ = 5e12, fit = True, dim = dim, alpha = opt.alpha, fdr_scale = opt.fdr_scale)
+    _, efdr[i,2] = get_scale(network, x[test_idx,:], p[test_idx], cuda = True, lambda2_ = 5e12, scale = scale, dim = dim, alpha = opt.alpha, fdr_scale = opt.fdr_scale)
+    _, efdr[i,0] = get_scale(network, x[train_idx,:], p[train_idx], cuda = True, lambda2_ = 5e12, scale = scale, dim = dim, alpha = opt.alpha, fdr_scale = opt.fdr_scale)
 
     scales[i] = scale
-
 
     n_samples = len(x[test_idx])
     x_input = Variable(torch.from_numpy(x[test_idx,:].astype(np.float32).reshape(n_samples ,dim))).cuda()
@@ -159,10 +166,13 @@ print 1 - sum(preds * gts)/sum(preds)
 
 info['number of ground truth discoveries'] = sum(gts)
 info['number of discoveries'] = sum(preds)
+info['set FDR'] = opt.alpha
 info['actual FDR'] = 1 - sum(preds * gts)/sum(preds)
 info['BH result'] = BH(p, alpha = opt.alpha)
 info['Storey BH result'] = Storey_BH(p, alpha = opt.alpha)
 info['elapsed time'] = timeit.default_timer() - then
+
+
 if x_prob:
     x_prob_data = x_prob.cpu().data.numpy()
     output_data =  [item.cpu().data.numpy() for item in outputs]

@@ -74,13 +74,14 @@ def p_value_beta_fit(p, lamb=0.8, bin_num=50, vis=0):
 def beta_mixture_pdf(x,pi_0,a,b):
     return beta.pdf(x,a,b)*(1-pi_0)+pi_0
 
-def Storey_BH(x, alpha = 0.05, lamb=0.4):
+def Storey_BH(x, alpha = 0.05, lamb=0.4, n = None):
     pi0_hat=np.divide(np.sum(x>lamb),x.shape[0] *(1-lamb))
     alpha /= pi0_hat
     x_s = sorted(x)
-    n = len(x_s)
+    if n is None:
+        n = len(x_s)
     ic = 0
-    for i in range(n):
+    for i in range(len(x_s)):
         if x_s[i] < i*alpha/float(n):
             ic = i
     return ic, x_s[ic], pi0_hat
@@ -238,25 +239,17 @@ def generate_data_2D(job=0, n_samples=10000,data_vis=0):
             
         return p, h, X
     
-def BH(x, alpha = 0.05):
+def BH(x, alpha = 0.05, n = None):
     x_s = sorted(x)
-    n = len(x_s)
+    if n is None:
+        n = len(x_s)
     ic = 0
-    for i in range(n):
+    for i in range(len(x_s)):
         if x_s[i] < i*alpha/float(n):
             ic = i
     return ic, x_s[ic]
 
-def Storey_BH(x, alpha = 0.05, lamb=0.4):
-    pi0_hat=np.divide(np.sum(x>lamb),x.shape[0] *(1-lamb))
-    alpha /= pi0_hat
-    x_s = sorted(x)
-    n = len(x_s)
-    ic = 0
-    for i in range(n):
-        if x_s[i] < i*alpha/float(n):
-            ic = i
-    return ic, x_s[ic], pi0_hat
+
 
 def p_value_beta_fit(p, lamb=0.8, bin_num=50, vis=0):
     pi_0=np.divide(np.sum(p>lamb), p.shape[0] * (1-lamb))
@@ -278,16 +271,7 @@ def p_value_beta_fit(p, lamb=0.8, bin_num=50, vis=0):
 def beta_mixture_pdf(x,pi_0,a,b):
     return beta.pdf(x,a,b)*(1-pi_0)+pi_0
 
-def Storey_BH(x, alpha = 0.05, lamb=0.4):
-    pi0_hat=np.divide(np.sum(x>lamb),x.shape[0] *(1-lamb))
-    alpha /= pi0_hat
-    x_s = sorted(x)
-    n = len(x_s)
-    ic = 0
-    for i in range(n):
-        if x_s[i] < i*alpha/float(n):
-            ic = i
-    return ic, x_s[ic], pi0_hat
+
 
 def Opt_t_cal_discrete(p, X, num_case=2,step_size=0.0001,ub=0.05,n_samples=10000,alpha=0.05):
     # Fit the beta mixture parameters
@@ -412,7 +396,7 @@ def train_network_to_target_p(network, optimizer, x, target_p, num_it = 1000, di
     
     return loss_hist
 
-def train_network(network, optimizer, x, p, num_it = 3000, alpha = 0.05, dim = 1, lambda_ = 20, lambda2_ = 1e3, cuda = False):
+def train_network(network, optimizer, x, p, num_it = 3000, alpha = 0.05, dim = 1, lambda_ = 20, lambda2_ = 1e3, cuda = False, fdr_scale = 1, mirror = 1):
     
     batch_size = len(x)
     n_samples = len(x)
@@ -436,7 +420,7 @@ def train_network(network, optimizer, x, p, num_it = 3000, alpha = 0.05, dim = 1
         optimizer.zero_grad()
         output = network.forward(x_input) 
         s = torch.sum(soft_compare((output - p_input) * lambda2_)) / batch_size #disco rate
-        s2 = torch.sum(soft_compare((p_input - (1-output)) * lambda2_)) / batch_size #false discoverate rate(over all samples)
+        s2 = torch.sum(soft_compare((p_input - (mirror - output * fdr_scale)) * lambda2_)) / batch_size /float(fdr_scale)#false discoverate rate(over all samples)
 
         gain = s  - lambda_ * relu((s2 - s * alpha)) 
 
@@ -447,6 +431,44 @@ def train_network(network, optimizer, x, p, num_it = 3000, alpha = 0.05, dim = 1
         loss_hist.append(loss.data[0])
     
     return loss_hist, s, s2
+
+
+#def train_network_adapt(network, optimizer, x, p, num_it = 3000, alpha = 0.05, dim = 1, lambda_ = 2, lambda2_ = 1e3, cuda = False):
+#    
+#    batch_size = len(x)
+#    n_samples = len(x)
+#    loss_hist = []
+#    soft_compare = nn.Sigmoid()
+#
+#    relu = nn.ReLU()
+#    choice = range(n_samples)
+#    x_input = Variable(torch.from_numpy(x[choice].astype(np.float32).reshape(batch_size,dim)))
+#    p_input = Variable(torch.from_numpy(p[choice].astype(np.float32).reshape(batch_size,1)))
+#
+#    if cuda:
+#        x_input = x_input.cuda()
+#        p_input = p_input.cuda()
+#        
+#    for iteration in range(num_it):
+#        if iteration % 100 == 0:
+#            print iteration
+#
+#
+#        optimizer.zero_grad()
+#        output = network.forward(x_input) 
+#        s = torch.sum(soft_compare((output - p_input) * lambda2_)) / batch_size #disco rate
+#        s2 = torch.sum(soft_compare((p_input - (1-output)) * lambda2_)) / batch_size #false discoverate rate(over all samples)
+#
+#        gain = s  - lambda_ * (1+iteration/1000.0) * relu((s2 - s * alpha)) 
+#
+#        loss = -gain
+#        loss.backward()
+#
+#        optimizer.step()
+#        loss_hist.append(loss.data[0])
+#    
+#    return loss_hist, s, s2
+
 
 
 def opt_threshold(x, p, k, intensity = 1):
@@ -471,12 +493,12 @@ def opt_threshold(x, p, k, intensity = 1):
     return p_target
 
 
-def opt_threshold_multi(x, p, k, intensity = 1):
+def opt_threshold_multi(x, p, k, intensity = 1, alpha = 0.05):
     n_samples = x.shape[0]
 
     km = KMeans(n_clusters = k)
     cluster = km.fit_predict(x)
-    opt = Opt_t_cal_discrete(p, cluster, num_case = k, step_size=0.00001)
+    opt = Opt_t_cal_discrete(p, cluster, num_case = k, step_size=0.00001, alpha = alpha)
     center = np.expand_dims(km.cluster_centers_, axis = -1).repeat(n_samples, axis = -1).T
     x2 = np.expand_dims(x, axis = -1).repeat(k, axis = -1)
 
@@ -550,7 +572,7 @@ def train_network_val(network, optimizer, x, p, num_it = 3000, alpha = 0.05, dim
     return train_loss_hist, val_loss_hist, s, s2
 
 
-def get_scale(network, x, p, dim = 1, cuda = False, lambda_ = 20, lambda2_ = 1e3, alpha = 0.05, fit = False, scale = 1):
+def get_scale(network, x, p, dim = 1, cuda = False, lambda_ = 20, lambda2_ = 1e3, alpha = 0.05, fit = False, scale = 1, fdr_scale = 1):
     batch_size = len(x)
     n_samples = len(x)
     loss_hist = []
@@ -581,7 +603,7 @@ def get_scale(network, x, p, dim = 1, cuda = False, lambda_ = 20, lambda2_ = 1e3
             output = network.forward(x_input) * current
 
             s = torch.sum(soft_compare((output - p_input) * lambda2_)) / batch_size #disco rate
-            s2 = torch.sum(soft_compare((p_input - (1-output)) * lambda2_)) / batch_size #false discoverate rate(over all samples)
+            s2 = torch.sum(soft_compare((p_input - (1-output * fdr_scale)) * lambda2_)) / batch_size / float(fdr_scale) #false discoverate rate(over all samples)
 
             if (s2/s).cpu().data[0] > alpha:
                 hi = current
