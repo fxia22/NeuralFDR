@@ -572,7 +572,7 @@ def train_network_val(network, optimizer, x, p, num_it = 3000, alpha = 0.05, dim
     return train_loss_hist, val_loss_hist, s, s2
 
 
-def get_scale(network, x, p, dim = 1, cuda = False, lambda_ = 20, lambda2_ = 1e3, alpha = 0.05, fit = False, scale = 1, fdr_scale = 1):
+def get_scale(network, x, p, dim = 1, cuda = False, lambda_ = 20, lambda2_ = 1e3, alpha = 0.05, fit = False, scale = 1, fdr_scale = 1, mirror  = 1):
     batch_size = len(x)
     n_samples = len(x)
     loss_hist = []
@@ -593,7 +593,7 @@ def get_scale(network, x, p, dim = 1, cuda = False, lambda_ = 20, lambda2_ = 1e3
     output = network.forward(x_input) * current
 
     s = torch.sum(soft_compare((output - p_input) * lambda2_)) / batch_size #disco rate
-    s2 = torch.sum(soft_compare((p_input - (1-output)) * lambda2_)) / batch_size #false discoverate rate(over all samples)
+    s2 = torch.sum(soft_compare((p_input - (mirror-output)) * lambda2_)) / batch_size #false discoverate rate(over all samples)
 
 
             
@@ -603,7 +603,7 @@ def get_scale(network, x, p, dim = 1, cuda = False, lambda_ = 20, lambda2_ = 1e3
             output = network.forward(x_input) * current
 
             s = torch.sum(soft_compare((output - p_input) * lambda2_)) / batch_size #disco rate
-            s2 = torch.sum(soft_compare((p_input - (1-output * fdr_scale)) * lambda2_)) / batch_size / float(fdr_scale) #false discoverate rate(over all samples)
+            s2 = torch.sum(soft_compare((p_input - (mirror -output * fdr_scale)) * lambda2_)) / batch_size / float(fdr_scale) #false discoverate rate(over all samples)
 
             if (s2/s).cpu().data[0] > alpha:
                 hi = current

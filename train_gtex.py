@@ -17,7 +17,8 @@ parser.add_argument('--prefix', type=str, default = 'http://localhost:8888/files
 parser.add_argument('--alpha', type=float, default = 0.05,  help='fdr')
 parser.add_argument('--fdr_scale', type=float, default = 1,  help='fd scale')
 parser.add_argument('--mirror', type=float, default = 1,  help='mirror')
-
+parser.add_argument('--net_scale', type=float, default = 1,  help='mirror')
+parser.add_argument('--usedim', type=int, default = -1,  help='dimension of data')
 
 
 
@@ -31,12 +32,18 @@ dim = opt.dim
 
 
 
+
 data = np.loadtxt(open(fn, "rb"), delimiter=",", skiprows=1)
 x = data[:,0:dim]
 p = data[:,dim]
 h = data[:,dim+1]
 n_samples = len(x)
 
+
+if opt.usedim >= 0:
+    x = x[:, opt.usedim]
+    dim = 1
+    
 grids = None
 x_prob = None
 
@@ -90,6 +97,7 @@ ninit = opt.init
 
 bhp = BH(p, alpha = opt.alpha)[1]
 lambda_param = 4/bhp
+lambda_param = 5e4
 print('lambda ', lambda_param)
 
 if dim == 1:
@@ -101,17 +109,18 @@ for i in range(3):
     loss_hist1_array = []
     loss_hist2_array = []
     for j in range(ninit):
-        network = get_network(num_layers = 10, cuda = True, dim = dim, scale = opt.mirror)
+        network = get_network(num_layers = 10, cuda = True, dim = dim, scale = opt.net_scale)
         optimizer = optim.Adagrad(network.parameters(), lr = 0.01)
         train_idx = train[i]
         val_idx = val[i]
         test_idx = test[i]
 
-        network init
-        try:
-            p_target = opt_threshold_multi(x[train_idx,:], p[train_idx], 10, alpha = opt.alpha)
-        except:
-            p_target = np.ones(x[train_idx,:].shape[0]) * Storey_BH(p[train_idx], alpha = opt.alpha)[1]
+        #network init
+        #try:
+        #    p_target = opt_threshold_multi(x[train_idx,:], p[train_idx], 10, alpha = opt.alpha)
+        #except:
+        print(BH(p[train_idx], alpha = opt.alpha, n = 10623893/3))
+        p_target = np.ones(x[train_idx,:].shape[0]) * BH(p[train_idx], alpha = opt.alpha, n = 10623893/3)[1]
 
 
         #plt.figure()
@@ -169,7 +178,7 @@ info['number of ground truth discoveries'] = sum(gts)
 info['number of discoveries'] = sum(preds)
 info['set FDR'] = opt.alpha
 info['actual FDR'] = 1 - sum(preds * gts)/sum(preds)
-info['BH result'] = BH(p, alpha = opt.alpha)
+info['BH result'] = BH(p, alpha = opt.alpha, n = 10623893)
 info['Storey BH result'] = Storey_BH(p, alpha = opt.alpha)
 info['elapsed time'] = timeit.default_timer() - then
 
