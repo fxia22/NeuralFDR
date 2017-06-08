@@ -23,7 +23,6 @@ parser.add_argument('--usedim', type=int, default = -1,  help='dimension of data
 
 
 
-
 opt = parser.parse_args()
 print (opt)
 
@@ -103,14 +102,127 @@ print('lambda ', lambda_param)
 if dim == 1:
     x = x.reshape((x.shape[0], 1))
 
+    
+def get_network_new(num_layers = 10, node_size = 10, dim = 1, scale = 1, cuda = False):
+    
+    
+    class Model(nn.Module):
+        def __init__(self, num_layers, node_size, dim, scale):
+            super(Model, self).__init__()
+            l = []
+            l.append(nn.Linear(dim,node_size))
+            l.append(nn.LeakyReLU(0.1))
+            for i in range(num_layers - 2):
+                l.append(nn.Linear(node_size,node_size))
+                l.append(nn.LeakyReLU(0.1))
+
+            l.append(nn.Linear(node_size,1))
+            
+            self.scale = scale
+            self.layers = nn.Sequential(*l)
+
+
+        def forward(self, x):
+            x = self.layers(x)
+            x = torch.mul(torch.exp(x) , self.scale)
+            
+            return x
+
+
+    network = Model(num_layers, node_size, dim, scale)
+    if cuda:
+        return network.cuda()
+    else:
+        return network    
+    
+def init(x, p):
+
+    from sklearn.cluster import KMeans
+    km = KMeans(n_clusters=20)
+    group = km.fit_predict(x)
+    
+    alpha = 0.1
+    ths = []
+    discs = 0
+    for i in range(20):
+        p_null = p[np.logical_and(group == i, p > 1-0.005)]
+        p_alt = p[np.logical_and(group == i, p < 0.005)]
+        th_high = 0.005
+        th_low = 0
+
+        for j in range(200):
+            th = (th_high + th_low)/2
+            #print th
+            fd = np.sum(p_null > 1-th)
+            td = np.sum(p_alt < th)
+            #print fd, td*alpha, th
+            if fd > td * alpha:
+                th_high = th
+            else:
+                th_low = th
+
+        ths.append(th)
+        discs += td
+        print td, fd, th
+    ths = np.array(ths)
+    
+    dist = (x.repeat(20, axis = 1) - km.cluster_centers_.T ) ** 2
+    s = np.sum(dist, axis = 1)
+    prob = np.exp(-dist * 5) / np.expand_dims(np.sum(np.exp(-dist * 5), axis = 1),1)
+    p_target = prob.dot(ths)
+    
+    return p_target
+
+def init2(x, p):
+
+    from sklearn.cluster import KMeans
+    km = KMeans(n_clusters=20)
+    group = km.fit_predict(x)
+    
+    alpha = 0.1
+    ths = []
+    discs = 0
+    for i in range(20):
+        p_null = p[np.logical_and(group == i, p > 1-0.005)]
+        p_alt = p[np.logical_and(group == i, p < 0.005)]
+        th_high = 0.005
+        th_low = 0
+
+        for j in range(200):
+            th = (th_high + th_low)/2
+            #print th
+            fd = np.sum(p_null > 1-th)
+            td = np.sum(p_alt < th)
+            #print fd, td*alpha, th
+            if fd > td * alpha:
+                th_high = th
+            else:
+                th_low = th
+
+        ths.append(th)
+        discs += td
+        print td, fd, th
+    ths = np.array(ths)
+    
+    print ths
+    print discs
+    
+    dist = (((np.expand_dims(x,2)).repeat(20, axis = 2) - km.cluster_centers_.T ) ** 2).sum(axis = 1)
+    print dist.shape
+    s = np.sum(dist, axis = 1)
+    prob = np.exp(-dist * 5) / np.expand_dims(np.sum(np.exp(-dist * 5), axis = 1),1)
+    p_target = prob.dot(ths)
+    
+    return p_target
+
+
 for i in range(3):
     networks = []
     scores = []
     loss_hist1_array = []
     loss_hist2_array = []
     for j in range(ninit):
-        network = get_network(num_layers = 10, cuda = True, dim = dim, scale = opt.net_scale)
-        optimizer = optim.Adagrad(network.parameters(), lr = 0.01)
+        
         train_idx = train[i]
         val_idx = val[i]
         test_idx = test[i]
@@ -120,13 +232,19 @@ for i in range(3):
         #    p_target = opt_threshold_multi(x[train_idx,:], p[train_idx], 10, alpha = opt.alpha)
         #except:
         print(BH(p[train_idx], alpha = opt.alpha, n = 10623893/3))
-        p_target = np.ones(x[train_idx,:].shape[0]) * BH(p[train_idx], alpha = opt.alpha, n = 10623893/3)[1]
-
-
+        bh_scale = BH(p[train_idx], alpha = opt.alpha, n = 10623893/3)[1]
+        print(bh_scale)
+        if dim == 1:
+            p_target = init(x[train_idx,:], p[train_idx])
+        elif dim >= 2:
+            p_target = init2(x[train_idx,:], p[train_idx])
+        network = get_network_new(num_layers = 10, cuda = True, dim = dim, scale = bh_scale)
+        optimizer = optim.Adagrad(network.parameters(), lr = 0.01)
+        
         #plt.figure()
         #plt.scatter(x, p_target)
-        loss_hist = train_network_to_target_p(network, optimizer, x[train_idx,:], p_target, num_it = 1000, cuda= True, dim = dim)
-        loss_hist2, s, s2 = train_network(network, optimizer, x[train_idx,:], p[train_idx], num_it = 1000, cuda = True, dim = dim, alpha = opt.alpha, lambda2_ = lambda_param, fdr_scale = opt.fdr_scale, mirror = opt.mirror)
+        loss_hist = train_network_to_target_p(network, optimizer, x[train_idx,:], p_target, num_it = 2000, cuda= True, dim = dim)
+        loss_hist2, s, s2 = train_network(network, optimizer, x[train_idx,:], p[train_idx], num_it = 8000, cuda = True, dim = dim, alpha = opt.alpha, lambda2_ = lambda_param, fdr_scale = opt.fdr_scale, mirror = opt.mirror, lambda_ = 10)
 
         loss_hist_np = np.array(loss_hist2)
         score = np.mean(loss_hist_np[-100:])
