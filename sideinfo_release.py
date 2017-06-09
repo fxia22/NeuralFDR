@@ -400,6 +400,7 @@ def train_network(network, optimizer, x, p, num_it = 3000, alpha = 0.05, dim = 1
     
     batch_size = len(x)
     n_samples = len(x)
+    print(batch_size, n_samples)
     loss_hist = []
     soft_compare = nn.Sigmoid()
 
@@ -572,7 +573,7 @@ def train_network_val(network, optimizer, x, p, num_it = 3000, alpha = 0.05, dim
     return train_loss_hist, val_loss_hist, s, s2
 
 
-def get_scale(network, x, p, dim = 1, cuda = False, lambda_ = 20, lambda2_ = 1e3, alpha = 0.05, fit = False, scale = 1, fdr_scale = 1):
+def get_scale(network, x, p, dim = 1, cuda = False, lambda_ = 20, lambda2_ = 1e3, alpha = 0.05, fit = False, scale = 1, fdr_scale = 1, mirror  = 1):
     batch_size = len(x)
     n_samples = len(x)
     loss_hist = []
@@ -593,7 +594,7 @@ def get_scale(network, x, p, dim = 1, cuda = False, lambda_ = 20, lambda2_ = 1e3
     output = network.forward(x_input) * current
 
     s = torch.sum(soft_compare((output - p_input) * lambda2_)) / batch_size #disco rate
-    s2 = torch.sum(soft_compare((p_input - (1-output)) * lambda2_)) / batch_size #false discoverate rate(over all samples)
+    s2 = torch.sum(soft_compare((p_input - (mirror-output)) * lambda2_)) / batch_size #false discoverate rate(over all samples)
 
 
             
@@ -603,7 +604,7 @@ def get_scale(network, x, p, dim = 1, cuda = False, lambda_ = 20, lambda2_ = 1e3
             output = network.forward(x_input) * current
 
             s = torch.sum(soft_compare((output - p_input) * lambda2_)) / batch_size #disco rate
-            s2 = torch.sum(soft_compare((p_input - (1-output * fdr_scale)) * lambda2_)) / batch_size / float(fdr_scale) #false discoverate rate(over all samples)
+            s2 = torch.sum(soft_compare((p_input - (mirror -output * fdr_scale)) * lambda2_)) / batch_size / float(fdr_scale) #false discoverate rate(over all samples)
 
             if (s2/s).cpu().data[0] > alpha:
                 hi = current
@@ -677,7 +678,7 @@ def generate_report(x = None, p = None, h = None, out_dir = '', url_prefix = '',
     if not loss1 is None and not loss2 is None:
         s += '## Loss history\n'
         plt.figure()
-        for i in range(3):
+        for i in range(len(loss1)):
             plt.plot(np.log(loss1[i]), label = 'Loss history {}'.format(i))
         plt.legend()
         plt.savefig(out_dir + '/loss1.png')
@@ -685,7 +686,7 @@ def generate_report(x = None, p = None, h = None, out_dir = '', url_prefix = '',
         s += '![]({})\n'.format('loss1.png')
         
         plt.figure()
-        for i in range(3):
+        for i in range(len(loss2)):
             plt.plot(loss2[i], label = 'Loss history {}'.format(i))
         plt.legend()
         plt.savefig(out_dir + '/loss2.png')
@@ -705,7 +706,7 @@ def generate_report(x = None, p = None, h = None, out_dir = '', url_prefix = '',
         s += '## Threshold \n\n'
         if dim == 1:
             plt.figure()
-            for i in range(3):
+            for i in range(len(outputs)):
                 plt.plot(x_prob, outputs[i], label = 'threshold {}'.format(i))
             
             plt.xlabel('x')
@@ -716,7 +717,7 @@ def generate_report(x = None, p = None, h = None, out_dir = '', url_prefix = '',
             
             s += '![]({})\n'.format('threshold.png')
         elif dim == 2:
-            for i in range(3):
+            for i in range(len(outputs)):
                 plt.figure()
                 z = outputs[i].reshape(X_grid.shape)
                 plt.pcolor(X_grid, Y_grid, z)

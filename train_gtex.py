@@ -4,7 +4,6 @@ import numpy as np
 import timeit
 import sys
 import argparse
-import os
 
 
 then = timeit.default_timer()
@@ -16,11 +15,10 @@ parser.add_argument('--init', type=int, default = 5,  help='number of inits')
 parser.add_argument('--out', type=str, default = 'test',  help='output_directory')
 parser.add_argument('--prefix', type=str, default = 'http://localhost:8888/files',  help='url prefix')
 parser.add_argument('--alpha', type=float, default = 0.05,  help='fdr')
-parser.add_argument('--intensity', type=float, default = 1,  help='fdr')
 parser.add_argument('--fdr_scale', type=float, default = 1,  help='fd scale')
 parser.add_argument('--mirror', type=float, default = 1,  help='mirror')
-
-
+parser.add_argument('--net_scale', type=float, default = 1,  help='mirror')
+parser.add_argument('--usedim', type=int, default = -1,  help='dimension of data')
 
 
 
@@ -31,9 +29,8 @@ print (opt)
 fn = opt.data
 dim = opt.dim
 
-out_dir = opt.out
-if not os.path.exists(out_dir):
-    os.makedirs(out_dir)
+
+
 
 data = np.loadtxt(open(fn, "rb"), delimiter=",", skiprows=1)
 x = data[:,0:dim]
@@ -41,6 +38,11 @@ p = data[:,dim]
 h = data[:,dim+1]
 n_samples = len(x)
 
+
+if opt.usedim >= 0:
+    x = x[:, opt.usedim]
+    dim = 1
+    
 grids = None
 x_prob = None
 
@@ -94,10 +96,125 @@ ninit = opt.init
 
 bhp = BH(p, alpha = opt.alpha)[1]
 lambda_param = 4/bhp
+lambda_param = 5e4
 print('lambda ', lambda_param)
 
 if dim == 1:
     x = x.reshape((x.shape[0], 1))
+
+    
+def get_network_new(num_layers = 10, node_size = 10, dim = 1, scale = 1, cuda = False):
+    
+    
+    class Model(nn.Module):
+        def __init__(self, num_layers, node_size, dim, scale):
+            super(Model, self).__init__()
+            l = []
+            l.append(nn.Linear(dim,node_size))
+            l.append(nn.LeakyReLU(0.1))
+            for i in range(num_layers - 2):
+                l.append(nn.Linear(node_size,node_size))
+                l.append(nn.LeakyReLU(0.1))
+
+            l.append(nn.Linear(node_size,1))
+            
+            self.scale = scale
+            self.layers = nn.Sequential(*l)
+
+
+        def forward(self, x):
+            x = self.layers(x)
+            x = torch.mul(torch.exp(x) , self.scale)
+            
+            return x
+
+
+    network = Model(num_layers, node_size, dim, scale)
+    if cuda:
+        return network.cuda()
+    else:
+        return network    
+    
+def init(x, p):
+
+    from sklearn.cluster import KMeans
+    km = KMeans(n_clusters=20)
+    group = km.fit_predict(x)
+    
+    alpha = 0.1
+    ths = []
+    discs = 0
+    for i in range(20):
+        p_null = p[np.logical_and(group == i, p > 1-0.005)]
+        p_alt = p[np.logical_and(group == i, p < 0.005)]
+        th_high = 0.005
+        th_low = 0
+
+        for j in range(200):
+            th = (th_high + th_low)/2
+            #print th
+            fd = np.sum(p_null > 1-th)
+            td = np.sum(p_alt < th)
+            #print fd, td*alpha, th
+            if fd > td * alpha:
+                th_high = th
+            else:
+                th_low = th
+
+        ths.append(th)
+        discs += td
+        print td, fd, th
+    ths = np.array(ths)
+    
+    dist = (x.repeat(20, axis = 1) - km.cluster_centers_.T ) ** 2
+    s = np.sum(dist, axis = 1)
+    prob = np.exp(-dist * 5) / np.expand_dims(np.sum(np.exp(-dist * 5), axis = 1),1)
+    p_target = prob.dot(ths)
+    
+    return p_target
+
+def init2(x, p):
+
+    from sklearn.cluster import KMeans
+    km = KMeans(n_clusters=20)
+    group = km.fit_predict(x)
+    
+    alpha = 0.1
+    ths = []
+    discs = 0
+    for i in range(20):
+        p_null = p[np.logical_and(group == i, p > 1-0.005)]
+        p_alt = p[np.logical_and(group == i, p < 0.005)]
+        th_high = 0.005
+        th_low = 0
+
+        for j in range(200):
+            th = (th_high + th_low)/2
+            #print th
+            fd = np.sum(p_null > 1-th)
+            td = np.sum(p_alt < th)
+            #print fd, td*alpha, th
+            if fd > td * alpha:
+                th_high = th
+            else:
+                th_low = th
+
+        ths.append(th)
+        discs += td
+        print td, fd, th
+    ths = np.array(ths)
+    
+    print ths
+    print discs
+    
+    dist = (((np.expand_dims(x,2)).repeat(20, axis = 2) - km.cluster_centers_.T ) ** 2).sum(axis = 1)
+    print dist.shape
+    s = np.sum(dist, axis = 1)
+    prob = np.exp(-dist * 5) / np.expand_dims(np.sum(np.exp(-dist * 5), axis = 1),1)
+    p_target = prob.dot(ths)
+    
+    return p_target
+
 
 for i in range(3):
     networks = []
@@ -105,23 +222,29 @@ for i in range(3):
     loss_hist1_array = []
     loss_hist2_array = []
     for j in range(ninit):
-        network = get_network(num_layers = 10, cuda = True, dim = dim, scale = opt.mirror)
-        optimizer = optim.Adagrad(network.parameters(), lr = 0.01)
+        
         train_idx = train[i]
         val_idx = val[i]
         test_idx = test[i]
 
         #network init
-        try:
-            p_target = opt_threshold_multi(x[train_idx,:], p[train_idx], 10, alpha = opt.alpha)
-        except:
-            p_target = np.ones(x[train_idx,:].shape[0]) * Storey_BH(p[train_idx], alpha = opt.alpha)[1]
-
-
+        #try:
+        #    p_target = opt_threshold_multi(x[train_idx,:], p[train_idx], 10, alpha = opt.alpha)
+        #except:
+        print(BH(p[train_idx], alpha = opt.alpha, n = 10623893/3))
+        bh_scale = BH(p[train_idx], alpha = opt.alpha, n = 10623893/3)[1]
+        print(bh_scale)
+        if dim == 1:
+            p_target = init(x[train_idx,:], p[train_idx])
+        elif dim >= 2:
+            p_target = init2(x[train_idx,:], p[train_idx])
+        network = get_network_new(num_layers = 10, cuda = True, dim = dim, scale = bh_scale)
+        optimizer = optim.Adagrad(network.parameters(), lr = 0.01)
+        
         #plt.figure()
         #plt.scatter(x, p_target)
-        loss_hist = train_network_to_target_p(network, optimizer, x[train_idx,:], p_target, num_it = 6000, cuda= True, dim = dim)
-        loss_hist2, s, s2 = train_network(network, optimizer, x[train_idx,:], p[train_idx], num_it = 12000, cuda = True, dim = dim, alpha = opt.alpha, lambda2_ = lambda_param, fdr_scale = opt.fdr_scale)
+        loss_hist = train_network_to_target_p(network, optimizer, x[train_idx,:], p_target, num_it = 2000, cuda= True, dim = dim)
+        loss_hist2, s, s2 = train_network(network, optimizer, x[train_idx,:], p[train_idx], num_it = 8000, cuda = True, dim = dim, alpha = opt.alpha, lambda2_ = lambda_param, fdr_scale = opt.fdr_scale, mirror = opt.mirror, lambda_ = 10)
 
         loss_hist_np = np.array(loss_hist2)
         score = np.mean(loss_hist_np[-100:])
@@ -159,7 +282,6 @@ for i in range(3):
         outputs.append(network.forward(x_prob) * scale)
 
     gts.append(h[test_idx])
-    torch.save(network.state_dict(), opt.out + '/model_{}.th'.format(i))
 
 
 preds = np.concatenate(preds)
@@ -174,7 +296,7 @@ info['number of ground truth discoveries'] = sum(gts)
 info['number of discoveries'] = sum(preds)
 info['set FDR'] = opt.alpha
 info['actual FDR'] = 1 - sum(preds * gts)/sum(preds)
-info['BH result'] = BH(p, alpha = opt.alpha)
+info['BH result'] = BH(p, alpha = opt.alpha, n = 10623893)
 info['Storey BH result'] = Storey_BH(p, alpha = opt.alpha)
 info['elapsed time'] = timeit.default_timer() - then
 
@@ -189,4 +311,3 @@ else:
 url = generate_report(x = x, p = p, h = h, out_dir = opt.out, url_prefix = opt.prefix, info = info, loss1 = loss_hists1, loss2 = loss_hists2, scales = scales, efdr = efdr, x_prob = x_prob_data, outputs = output_data, grids = grids)
 
 print(url)
-
