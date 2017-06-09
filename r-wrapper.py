@@ -34,7 +34,7 @@ ro.r("library(\"IHW\")")
 
 # In[7]:
 
-ro.r("ihwRes <- ihw(p_value ~ x_value ,  data = data, alpha = 0.05)")
+ro.r("ihwRes <- ihw(p_value ~ x_value ,  data = data, alpha = 0.1)")
 
 
 # In[9]:
@@ -45,6 +45,7 @@ res = ro.r("rejections(ihwRes)")
 # In[13]:
 
 print(np.array(res))
+print(sys.argv[1])
 
 
 # In[ ]:

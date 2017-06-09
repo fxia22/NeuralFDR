@@ -4,6 +4,7 @@ import numpy as np
 import timeit
 import sys
 import argparse
+import os
 
 
 then = timeit.default_timer()
@@ -15,6 +16,7 @@ parser.add_argument('--init', type=int, default = 5,  help='number of inits')
 parser.add_argument('--out', type=str, default = 'test',  help='output_directory')
 parser.add_argument('--prefix', type=str, default = 'http://localhost:8888/files',  help='url prefix')
 parser.add_argument('--alpha', type=float, default = 0.05,  help='fdr')
+parser.add_argument('--intensity', type=float, default = 1,  help='fdr')
 parser.add_argument('--fdr_scale', type=float, default = 1,  help='fd scale')
 
 
@@ -27,7 +29,9 @@ print (opt)
 fn = opt.data
 dim = opt.dim
 
-
+out_dir = opt.out
+if not os.path.exists(out_dir):
+    os.makedirs(out_dir)
 
 data = np.loadtxt(open(fn, "rb"), delimiter=",", skiprows=1)
 x = data[:,0:dim]
@@ -115,8 +119,8 @@ for i in range(3):
 
         #plt.figure()
         #plt.scatter(x, p_target)
-        loss_hist = train_network_to_target_p(network, optimizer, x[train_idx,:], p_target, num_it = 3000, cuda= True, dim = dim)
-        loss_hist2, s, s2 = train_network(network, optimizer, x[train_idx,:], p[train_idx], num_it = 6000, cuda = True, dim = dim, alpha = opt.alpha, lambda2_ = lambda_param, fdr_scale = opt.fdr_scale)
+        loss_hist = train_network_to_target_p(network, optimizer, x[train_idx,:], p_target, num_it = 6000, cuda= True, dim = dim)
+        loss_hist2, s, s2 = train_network(network, optimizer, x[train_idx,:], p[train_idx], num_it = 12000, cuda = True, dim = dim, alpha = opt.alpha, lambda2_ = lambda_param, fdr_scale = opt.fdr_scale)
 
         loss_hist_np = np.array(loss_hist2)
         score = np.mean(loss_hist_np[-100:])
@@ -154,6 +158,7 @@ for i in range(3):
         outputs.append(network.forward(x_prob) * scale)
 
     gts.append(h[test_idx])
+    torch.save(network.state_dict(), opt.out + '/model_{}.th'.format(i))
 
 
 preds = np.concatenate(preds)
@@ -183,3 +188,4 @@ else:
 url = generate_report(x = x, p = p, h = h, out_dir = opt.out, url_prefix = opt.prefix, info = info, loss1 = loss_hists1, loss2 = loss_hists2, scales = scales, efdr = efdr, x_prob = x_prob_data, outputs = output_data, grids = grids)
 
 print(url)
+
