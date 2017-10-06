@@ -19,10 +19,7 @@ parser.add_argument('--alpha', type=float, default = 0.05,  help='fdr')
 parser.add_argument('--intensity', type=float, default = 1,  help='fdr')
 parser.add_argument('--fdr_scale', type=float, default = 1,  help='fd scale')
 parser.add_argument('--mirror', type=float, default = 1,  help='mirror')
-
-
-
-
+parser.add_argument('--cuda', action='store_true', help='use cuda')
 
 
 opt = parser.parse_args()
@@ -66,11 +63,21 @@ elif dim == 2:
 
 if x_prob:
     print(x_prob.size())
-    x_prob = x_prob.cuda()
+    if opt.cuda:
+        x_prob = x_prob.cuda()
 
 #network = get_network(cuda = True, dim = dim)
 #optimizer = optim.Adagrad(network.parameters(), lr = 0.01)
 
+bhp = BH(p, alpha = opt.alpha)[1]
+lambda_param = 4/bhp
+print('lambda ', lambda_param)
+
+#from IPython import embed; embed()
+
+#select = np.logical_or(p < bhp * 10, p > 1 - bhp * 10)
+#x = x[select, :]
+#p = p[select]
 
 indices = np.random.permutation(x.shape[0])
 A = [indices[:x.shape[0]/3], indices[x.shape[0]/3 : x.shape[0]/3*2], indices[x.shape[0]/3 * 2:]]
@@ -92,9 +99,7 @@ scales = np.zeros(3)
 
 ninit = opt.init
 
-bhp = BH(p, alpha = opt.alpha)[1]
-lambda_param = 4/bhp
-print('lambda ', lambda_param)
+
 
 if dim == 1:
     x = x.reshape((x.shape[0], 1))
@@ -105,7 +110,7 @@ for i in range(3):
     loss_hist1_array = []
     loss_hist2_array = []
     for j in range(ninit):
-        network = get_network(num_layers = 10, cuda = True, dim = dim, scale = opt.mirror)
+        network = get_network(num_layers = 10, cuda = opt.cuda, dim = dim, scale = opt.mirror)
         optimizer = optim.Adagrad(network.parameters(), lr = 0.01)
         train_idx = train[i]
         val_idx = val[i]
@@ -120,8 +125,8 @@ for i in range(3):
 
         #plt.figure()
         #plt.scatter(x, p_target)
-        loss_hist = train_network_to_target_p(network, optimizer, x[train_idx,:], p_target, num_it = 6000, cuda= True, dim = dim)
-        loss_hist2, s, s2 = train_network(network, optimizer, x[train_idx,:], p[train_idx], num_it = 12000, cuda = True, dim = dim, alpha = opt.alpha, lambda2_ = lambda_param, fdr_scale = opt.fdr_scale)
+        loss_hist = train_network_to_target_p(network, optimizer, x[train_idx,:], p_target, num_it = 3000, cuda= opt.cuda, dim = dim)
+        loss_hist2, s, s2 = train_network(network, optimizer, x[train_idx,:], p[train_idx], num_it = 6000, cuda = opt.cuda, dim = dim, alpha = opt.alpha, lambda2_ = lambda_param, fdr_scale = opt.fdr_scale)
 
         loss_hist_np = np.array(loss_hist2)
         score = np.mean(loss_hist_np[-100:])
@@ -141,15 +146,19 @@ for i in range(3):
     loss_hists1.append(loss_hist)
     loss_hists2.append(loss_hist2)
 
-    scale, efdr[i,1] = get_scale(network, x[val_idx,:], p[val_idx], cuda = True, lambda2_ = 5e12, fit = True, dim = dim, alpha = opt.alpha, fdr_scale = opt.fdr_scale, mirror = opt.mirror)
-    _, efdr[i,2] = get_scale(network, x[test_idx,:], p[test_idx], cuda = True, lambda2_ = 5e12, scale = scale, dim = dim, alpha = opt.alpha, fdr_scale = opt.fdr_scale, mirror = opt.mirror)
-    _, efdr[i,0] = get_scale(network, x[train_idx,:], p[train_idx], cuda = True, lambda2_ = 5e12, scale = scale, dim = dim, alpha = opt.alpha, fdr_scale = opt.fdr_scale, mirror = opt.mirror)
+    scale, efdr[i,1] = get_scale(network, x[val_idx,:], p[val_idx], cuda = opt.cuda, lambda2_ = 5e12, fit = True, dim = dim, alpha = opt.alpha, fdr_scale = opt.fdr_scale, mirror = opt.mirror)
+    _, efdr[i,2] = get_scale(network, x[test_idx,:], p[test_idx], cuda = opt.cuda, lambda2_ = 5e12, scale = scale, dim = dim, alpha = opt.alpha, fdr_scale = opt.fdr_scale, mirror = opt.mirror)
+    _, efdr[i,0] = get_scale(network, x[train_idx,:], p[train_idx], cuda = opt.cuda, lambda2_ = 5e12, scale = scale, dim = dim, alpha = opt.alpha, fdr_scale = opt.fdr_scale, mirror = opt.mirror)
 
     scales[i] = scale
 
     n_samples = len(x[test_idx])
-    x_input = Variable(torch.from_numpy(x[test_idx,:].astype(np.float32).reshape(n_samples ,dim))).cuda()
-    p_input = Variable(torch.from_numpy(p[test_idx].astype(np.float32).reshape(n_samples ,1))).cuda()
+    x_input = Variable(torch.from_numpy(x[test_idx,:].astype(np.float32).reshape(n_samples ,dim)))
+    p_input = Variable(torch.from_numpy(p[test_idx].astype(np.float32).reshape(n_samples ,1)))
+    if opt.cuda:
+        x_input = x_input.cuda()
+        p_input = p_input.cuda()
+    
     output = network.forward(x_input) * scale
     pred = (p_input < output).cpu().data.numpy()
     pred = pred[:,0].astype(np.float32)
