@@ -64,7 +64,7 @@ elif dim == 2:
     grids = (X_grid, Y_grid)
 
 
-if x_prob:
+if not x_prob is None:
     print(x_prob.size())
     x_prob = x_prob.cuda()
 
@@ -146,6 +146,8 @@ for i in range(3):
     _, efdr[i,0] = get_scale(network, x[train_idx,:], p[train_idx], cuda = True, lambda2_ = 5e12, scale = scale, dim = dim, alpha = opt.alpha, fdr_scale = opt.fdr_scale, mirror = opt.mirror)
 
     scales[i] = scale
+    if scale > 2 or scale < 0.5:
+        print('Warning: abnormal scale factor, suggest rerun')
 
     n_samples = len(x[test_idx])
     x_input = Variable(torch.from_numpy(x[test_idx,:].astype(np.float32).reshape(n_samples ,dim))).cuda()
@@ -179,7 +181,7 @@ info['Storey BH result'] = Storey_BH(p, alpha = opt.alpha)
 info['elapsed time'] = timeit.default_timer() - then
 
 
-if x_prob:
+if not x_prob is None:
     x_prob_data = x_prob.cpu().data.numpy()
     output_data =  [item.cpu().data.numpy() for item in outputs]
 else:
