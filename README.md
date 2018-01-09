@@ -1,4 +1,4 @@
-# NeuralFDR
+## NeuralFDR
 Software accompanying "NeuralFDR: Learning Discovery Thresholds from Hypothesis Features"
 
 
@@ -16,3 +16,4 @@ python train.py --data data/data_airway.csv --dim 1 --out airway
 ```
 
 The report will be available in airway folder
+
