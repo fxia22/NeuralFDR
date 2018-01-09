@@ -1,5 +1,5 @@
 # NeuralFDR
-Software accompanying "NeuralFDR: Learning Discovery Thresholds from Hypothesis Features"
+Software accompanying "NeuralFDR: Learning Discovery Thresholds from Hypothesis Features", NIPS 2017
 
 
 ## Dependencies 
