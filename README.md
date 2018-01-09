@@ -1,4 +1,4 @@
-## NeuralFDR
+# NeuralFDR
 Software accompanying "NeuralFDR: Learning Discovery Thresholds from Hypothesis Features"
 
 
