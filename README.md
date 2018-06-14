@@ -17,3 +17,16 @@ python train.py --data data/data_airway.csv --dim 1 --out airway
 
 The report will be available in airway folder
 
+
+## Citation
+
+If you use this code, please cite
+```
+@inproceedings{xia2017neuralfdr,
+  title={NeuralFDR: Learning Discovery Thresholds from Hypothesis Features},
+  author={Xia, Fei and Zhang, Martin J and Zou, James Y and Tse, David},
+  booktitle={Advances in Neural Information Processing Systems},
+  pages={1540--1549},
+  year={2017}
+}
+```
